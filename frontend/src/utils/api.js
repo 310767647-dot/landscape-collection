@@ -190,6 +190,11 @@ export const getStats = async () => {
   return response.data
 }
 
+export const getAuditLogs = async (params = {}) => {
+  const response = await api.get('/admin/audit-logs', { params })
+  return response.data
+}
+
 export const checkServerHealth = async () => {
   try {
     const response = await api.get('/health', { timeout: 5000 })

@@ -48,6 +48,8 @@ function AdminPage() {
   const [deletedMaterials, setDeletedMaterials] = useState([])
   const [deletedProjects, setDeletedProjects] = useState([])
   const [deletedTab, setDeletedTab] = useState('users')
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditLogLoading, setAuditLogLoading] = useState(false)
 
   const showToast = (message) => {
     setToast(message)
@@ -542,6 +544,31 @@ function AdminPage() {
     }
   }
 
+  const loadAuditLogs = async () => {
+    setAuditLogLoading(true)
+    try {
+      const { getAuditLogs } = await import('../utils/api')
+      const data = await getAuditLogs()
+      setAuditLogs(Array.isArray(data.logs) ? data.logs : [])
+    } catch (e) {
+      console.error('加载审计日志失败:', e)
+      setAuditLogs([])
+    } finally {
+      setAuditLogLoading(false)
+    }
+  }
+
+  const getActionLabel = (action) => {
+    const labels = {
+      create: '创建',
+      update: '修改',
+      delete: '删除',
+      restore: '恢复',
+      permanent_delete: '永久删除'
+    }
+    return labels[action] || action
+  }
+
   return (
     <div>
       <div className="page-header" style={{ paddingBottom: 12 }}>
@@ -597,6 +624,12 @@ function AdminPage() {
             onClick={() => { setTab('deleted'); loadDeletedUsers(); loadDeletedMaterials(); }}
           >
             🗑 删除记录
+          </button>
+          <button
+            className={`filter-chip ${tab === 'logs' ? 'active' : ''}`}
+            onClick={() => { setTab('logs'); loadAuditLogs(); }}
+          >
+            📋 操作日志
           </button>
         </div>
 
@@ -977,6 +1010,39 @@ function AdminPage() {
                     </div>
                   ))
                 )}
+              </div>
+            )}
+            {user?.username === 'superadmin' && (
+              <div style={{ marginTop: 12, padding: 10, background: '#fffbe6', borderRadius: 8, fontSize: 12, color: '#d48806' }}>
+                🛡️ 仅超级管理员可以恢复/清除删除记录
+              </div>
+            )}
+          </div>
+        ) : tab === 'logs' ? (
+          <div className="form-section">
+            <div className="form-section-title">📋 操作日志</div>
+            {auditLogLoading ? (
+              <div className="empty-state"><div className="loading-spinner" style={{ margin: '0 auto' }} /></div>
+            ) : auditLogs.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#999', textAlign: 'center', padding: '20px 0' }}>暂无操作记录</div>
+            ) : (
+              <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                {auditLogs.map((log, idx) => (
+                  <div key={log.id || idx} style={{ padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontSize: 13 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span>
+                        <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, marginRight: 8,
+                          background: log.action === 'create' ? '#e6f7ff' : log.action === 'delete' ? '#fff2f0' : log.action === 'update' ? '#fffbe6' : '#e6fffb',
+                          color: log.action === 'create' ? '#1890ff' : log.action === 'delete' ? '#ff4d4f' : log.action === 'update' ? '#faad14' : '#52c41a'
+                        }}>{getActionLabel(log.action)}</span>
+                        <strong>{log.target_name || '-'}</strong>
+                        <span style={{ color: '#999', marginLeft: 6 }}>({log.target_type})</span>
+                      </span>
+                      <span style={{ color: '#bbb', fontSize: 11 }}>{log.created_at?.slice(0, 16) || ''}</span>
+                    </div>
+                    <div style={{ color: '#666', fontSize: 12 }}>👤 {log.username} · {log.details || ''}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

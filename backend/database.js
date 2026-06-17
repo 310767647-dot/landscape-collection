@@ -104,8 +104,21 @@ const initDb = async () => {
         deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
         deleted_by TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        username TEXT,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        target_name TEXT,
+        details TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
+    // 检查并添加新列
     const userColumns = db.exec("PRAGMA table_info(users);")[0]?.values?.map(v => v[1]) || [];
     if (!userColumns.includes('role')) {
       db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';");

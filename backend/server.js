@@ -77,6 +77,20 @@ function isFirstAdmin(userId) {
   }
 }
 
+// 记录操作日志
+function logAction(req, action, targetType, targetId, targetName, details) {
+  try {
+    const { v4: uuidv4 } = require('uuid');
+    const logId = uuidv4();
+    db.prepare(`
+      INSERT INTO audit_logs (id, user_id, username, action, target_type, target_id, target_name, details)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(logId, req.user?.id || 'system', req.user?.username || 'system', action, targetType, targetId || '', targetName || '', details || '');
+  } catch (error) {
+    console.error('日志记录失败:', error);
+  }
+}
+
 function requireAdmin(req, res, next) {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: '无权限访问' });
@@ -700,6 +714,7 @@ db.getReady().then(() => {
         );
       }
 
+      logAction(req, 'update', 'material', id, req.body.material_name || '', `更新材料信息`);
       res.json({ success: true, message: '材料更新成功' });
     } catch (error) {
       console.error('Error updating material:', error);
@@ -1345,128 +1360,139 @@ db.getReady().then(() => {
     }
   });
 
-  app.post('/api/admin/deleted/projects/:id/restore', authenticateToken, requireAdmin, (req, res) => {
+  // ========== 审计日志接口 ==========
+
+  // 获取操作日志
+  app.get('/api/admin/audit-logs', authenticateToken, requireAdmin, (req, res) => {
     try {
-      const { id } = req.params;
-      
-      const deletedProject = db.prepare('SELECT * FROM deleted_projects WHERE id = ?').get(id);
-      if (!deletedProject) {
-        return res.status(404).json({ error: '删除记录不存在' });
-      }
-
-      const existingProject = db.prepare('SELECT * FROM projects WHERE name = ?').get(deletedProject.name);
-      if (existingProject) {
-        return res.status(400).json({ error: '项目名称已存在' });
-      }
-
-      db.prepare(`
-        INSERT INTO projects (id, name, description, user_id)
-        VALUES (?, ?, ?, ?)
-      `).run(deletedProject.id, deletedProject.name, deletedProject.description || '', deletedProject.user_id || '');
-
-      db.prepare('DELETE FROM deleted_projects WHERE id = ?').run(id);
-
-      res.json({ success: true, message: '项目恢复成功' });
+      const { page = 1, limit = 50 } = req.query;
+      const offset = (page - 1) * limit;
+      const logs = db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(parseInt(limit), offset);
+      const total = db.prepare('SELECT COUNT(*) as count FROM audit_logs').get()?.count || 0;
+      res.json({ logs, pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / limit) } });
     } catch (error) {
-      console.error('Error restoring project:', error);
-      res.status(500).json({ error: '恢复项目失败' });
+      console.error('获取审计日志错误:', error);
+      res.status(500).json({ error: '获取审计日志失败' });
     }
   });
 
-  app.delete('/api/admin/deleted/projects/:id', authenticateToken, requireAdmin, (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      db.prepare('DELETE FROM deleted_projects WHERE id = ?').run(id);
+  // ========== 删除记录操作保护（仅超级管理员）==========
 
-      res.json({ success: true, message: '删除记录已清除' });
-    } catch (error) {
-      console.error('Error deleting deleted project record:', error);
-      res.status(500).json({ error: '清除删除记录失败' });
-    }
-  });
-
-  app.post('/api/admin/deleted/users/:id/restore', authenticateToken, requireAdmin, (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const deletedUser = db.prepare('SELECT * FROM deleted_users WHERE id = ?').get(id);
-      if (!deletedUser) {
-        return res.status(404).json({ error: '删除记录不存在' });
-      }
-
-      const existingUser = db.prepare('SELECT * FROM users WHERE username = ?').get(deletedUser.username);
-      if (existingUser) {
-        return res.status(400).json({ error: '用户名已存在' });
-      }
-
-      db.prepare(`
-        INSERT INTO users (id, username, password, display_name, real_name, phone, role, permissions)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(deletedUser.id, deletedUser.username, deletedUser.password, deletedUser.display_name || '', deletedUser.real_name || '', deletedUser.phone || '', deletedUser.role || 'user', deletedUser.permissions || '{}');
-
-      db.prepare('DELETE FROM deleted_users WHERE id = ?').run(id);
-
-      res.json({ success: true, message: '用户恢复成功' });
-    } catch (error) {
-      console.error('Error restoring user:', error);
-      res.status(500).json({ error: '恢复用户失败' });
-    }
-  });
-
+  // 恢复已删除材料
   app.post('/api/admin/deleted/materials/:id/restore', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
+    }
     try {
       const { id } = req.params;
-      
       const deletedMaterial = db.prepare('SELECT * FROM deleted_materials WHERE id = ?').get(id);
-      if (!deletedMaterial) {
-        return res.status(404).json({ error: '删除记录不存在' });
-      }
-
-      db.prepare(`
-        INSERT INTO materials (id, user_id, project_name, material_name, supplier_name, specifications, quantity, unit, arrival_time, photo_path, ocr_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(deletedMaterial.id, deletedMaterial.user_id, deletedMaterial.project_name, deletedMaterial.material_name, deletedMaterial.supplier_name, deletedMaterial.specifications, deletedMaterial.quantity, deletedMaterial.unit, deletedMaterial.arrival_time, deletedMaterial.photo_path || '', deletedMaterial.ocr_text || '');
-
+      if (!deletedMaterial) return res.status(404).json({ error: '删除记录不存在' });
+      db.prepare(`INSERT INTO materials (id, user_id, project_name, material_name, supplier_name, specifications, quantity, unit, arrival_time, photo_path, ocr_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(deletedMaterial.id, deletedMaterial.user_id, deletedMaterial.project_name, deletedMaterial.material_name, deletedMaterial.supplier_name, deletedMaterial.specifications, deletedMaterial.quantity, deletedMaterial.unit, deletedMaterial.arrival_time, deletedMaterial.photo_path || '', deletedMaterial.ocr_text || '');
       db.prepare('DELETE FROM deleted_materials WHERE id = ?').run(id);
-
+      logAction(req, 'restore', 'material', id, deletedMaterial.material_name, '从回收站恢复材料');
       res.json({ success: true, message: '材料恢复成功' });
     } catch (error) {
-      console.error('Error restoring material:', error);
+      console.error('恢复材料错误:', error);
       res.status(500).json({ error: '恢复材料失败' });
     }
   });
 
-  app.delete('/api/admin/deleted/users/:id', authenticateToken, requireAdmin, (req, res) => {
+  // 永久删除材料（回收站中彻底删除）
+  app.delete('/api/admin/deleted/materials/:id', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
+    }
     try {
       const { id } = req.params;
-      
-      db.prepare('DELETE FROM deleted_users WHERE id = ?').run(id);
-
+      const deletedMaterial = db.prepare('SELECT * FROM deleted_materials WHERE id = ?').get(id);
+      if (deletedMaterial && deletedMaterial.photo_path) {
+        const photoPath = path.join(__dirname, 'data', 'uploads', path.basename(deletedMaterial.photo_path));
+        if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
+      }
+      db.prepare('DELETE FROM deleted_materials WHERE id = ?').run(id);
+      logAction(req, 'permanent_delete', 'material', id, deletedMaterial?.material_name || '', '从回收站永久删除材料');
       res.json({ success: true, message: '删除记录已清除' });
     } catch (error) {
-      console.error('Error deleting deleted user record:', error);
+      console.error('清除删除记录错误:', error);
       res.status(500).json({ error: '清除删除记录失败' });
     }
   });
 
-  app.delete('/api/admin/deleted/materials/:id', authenticateToken, requireAdmin, (req, res) => {
+  // 恢复已删除用户
+  app.post('/api/admin/deleted/users/:id/restore', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
+    }
     try {
       const { id } = req.params;
-      
-      const deletedMaterial = db.prepare('SELECT * FROM deleted_materials WHERE id = ?').get(id);
-      if (deletedMaterial && deletedMaterial.photo_path) {
-        const photoPath = path.join(__dirname, 'uploads', path.basename(deletedMaterial.photo_path));
-        if (fs.existsSync(photoPath)) {
-          fs.unlinkSync(photoPath);
-        }
-      }
+      const deletedUser = db.prepare('SELECT * FROM deleted_users WHERE id = ?').get(id);
+      if (!deletedUser) return res.status(404).json({ error: '删除记录不存在' });
+      const existingUser = db.prepare('SELECT * FROM users WHERE username = ?').get(deletedUser.username);
+      if (existingUser) return res.status(400).json({ error: '用户名已存在' });
+      db.prepare('INSERT INTO users (id, username, password, display_name, real_name, phone, role, permissions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(deletedUser.id, deletedUser.username, deletedUser.password, deletedUser.display_name || '', deletedUser.real_name || '', deletedUser.phone || '', deletedUser.role || 'user', deletedUser.permissions || '{}');
+      db.prepare('DELETE FROM deleted_users WHERE id = ?').run(id);
+      logAction(req, 'restore', 'user', id, deletedUser.username, '从回收站恢复用户');
+      res.json({ success: true, message: '用户恢复成功' });
+    } catch (error) {
+      console.error('恢复用户错误:', error);
+      res.status(500).json({ error: '恢复用户失败' });
+    }
+  });
 
-      db.prepare('DELETE FROM deleted_materials WHERE id = ?').run(id);
-
+  // 永久删除用户（回收站中彻底删除）
+  app.delete('/api/admin/deleted/users/:id', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
+    }
+    try {
+      const { id } = req.params;
+      const deletedUser = db.prepare('SELECT * FROM deleted_users WHERE id = ?').get(id);
+      db.prepare('DELETE FROM deleted_users WHERE id = ?').run(id);
+      logAction(req, 'permanent_delete', 'user', id, deletedUser?.username || '', '从回收站永久删除用户');
       res.json({ success: true, message: '删除记录已清除' });
     } catch (error) {
-      console.error('Error deleting deleted material record:', error);
+      console.error('清除删除记录错误:', error);
+      res.status(500).json({ error: '清除删除记录失败' });
+    }
+  });
+
+  // 恢复已删除项目
+  app.post('/api/admin/deleted/projects/:id/restore', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
+    }
+    try {
+      const { id } = req.params;
+      const deletedProject = db.prepare('SELECT * FROM deleted_projects WHERE id = ?').get(id);
+      if (!deletedProject) return res.status(404).json({ error: '删除记录不存在' });
+      const existingProject = db.prepare('SELECT * FROM projects WHERE name = ?').get(deletedProject.name);
+      if (existingProject) return res.status(400).json({ error: '项目名称已存在' });
+      db.prepare('INSERT INTO projects (id, name, description, user_id) VALUES (?, ?, ?, ?)')
+        .run(deletedProject.id, deletedProject.name, deletedProject.description || '', deletedProject.user_id || '');
+      db.prepare('DELETE FROM deleted_projects WHERE id = ?').run(id);
+      logAction(req, 'restore', 'project', id, deletedProject.name, '从回收站恢复项目');
+      res.json({ success: true, message: '项目恢复成功' });
+    } catch (error) {
+      console.error('恢复项目错误:', error);
+      res.status(500).json({ error: '恢复项目失败' });
+    }
+  });
+
+  // 永久删除项目（回收站中彻底删除）
+  app.delete('/api/admin/deleted/projects/:id', authenticateToken, requireAdmin, (req, res) => {
+    if (!isFirstAdmin(req.user.id)) {
+      return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
+    }
+    try {
+      const { id } = req.params;
+      const deletedProject = db.prepare('SELECT * FROM deleted_projects WHERE id = ?').get(id);
+      db.prepare('DELETE FROM deleted_projects WHERE id = ?').run(id);
+      logAction(req, 'permanent_delete', 'project', id, deletedProject?.name || '', '从回收站永久删除项目');
+      res.json({ success: true, message: '删除记录已清除' });
+    } catch (error) {
+      console.error('清除删除记录错误:', error);
       res.status(500).json({ error: '清除删除记录失败' });
     }
   });
