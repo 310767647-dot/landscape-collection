@@ -1038,7 +1038,7 @@ function AdminPage() {
                         <strong>{log.target_name || '-'}</strong>
                         <span style={{ color: '#999', marginLeft: 6 }}>({log.target_type})</span>
                       </span>
-                      <span style={{ color: '#bbb', fontSize: 11 }}>{log.created_at?.slice(0, 16) || ''}</span>
+                      <span style={{ color: '#bbb', fontSize: 11 }}>{log.created_at ? new Date(log.created_at + 'Z').toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
                     </div>
                     <div style={{ color: '#666', fontSize: 12 }}>👤 {log.username} · {log.details || ''}</div>
                   </div>

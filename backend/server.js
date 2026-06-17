@@ -67,11 +67,21 @@ function parsePermissions(permissions) {
   }
 }
 
-// 判断是否为首个创建的管理员（超级管理员不可被删除/降级）
+// 判断是否为首个创建的管理员（不可被删除/降级）
 function isFirstAdmin(userId) {
   try {
     const firstAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get();
     return firstAdmin && firstAdmin.id === userId;
+  } catch {
+    return false;
+  }
+}
+
+// 判断是否为超级管理员（受保护账号，可操作删除记录）
+function isSuperAdmin(userId) {
+  try {
+    const user = db.prepare('SELECT username FROM users WHERE id = ?').get(userId);
+    return user && user.username === 'superadmin';
   } catch {
     return false;
   }
@@ -1391,7 +1401,7 @@ db.getReady().then(() => {
 
   // 恢复已删除材料
   app.post('/api/admin/deleted/materials/:id/restore', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
     }
     try {
@@ -1411,7 +1421,7 @@ db.getReady().then(() => {
 
   // 永久删除材料（回收站中彻底删除）
   app.delete('/api/admin/deleted/materials/:id', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
     }
     try {
@@ -1432,7 +1442,7 @@ db.getReady().then(() => {
 
   // 恢复已删除用户
   app.post('/api/admin/deleted/users/:id/restore', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
     }
     try {
@@ -1454,7 +1464,7 @@ db.getReady().then(() => {
 
   // 永久删除用户（回收站中彻底删除）
   app.delete('/api/admin/deleted/users/:id', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
     }
     try {
@@ -1471,7 +1481,7 @@ db.getReady().then(() => {
 
   // 恢复已删除项目
   app.post('/api/admin/deleted/projects/:id/restore', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以恢复删除记录' });
     }
     try {
@@ -1493,7 +1503,7 @@ db.getReady().then(() => {
 
   // 永久删除项目（回收站中彻底删除）
   app.delete('/api/admin/deleted/projects/:id', authenticateToken, requireAdmin, (req, res) => {
-    if (!isFirstAdmin(req.user.id)) {
+    if (!isSuperAdmin(req.user.id)) {
       return res.status(403).json({ error: '仅超级管理员可以永久删除记录' });
     }
     try {
