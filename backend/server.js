@@ -414,6 +414,7 @@ db.getReady().then(() => {
       const result = db.prepare(query).run(...updateValues);
       console.log('更新结果:', result);
 
+      logAction(req, 'update', 'user', id, user.display_name || user.username, '更新用户信息');
       res.json({ success: true, message: '用户信息更新成功' });
     } catch (error) {
       console.error('Error updating user:', error);
@@ -452,6 +453,7 @@ db.getReady().then(() => {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(userId, username, hashedPassword, display_name, display_name, phone, role || 'user');
       
+      logAction(req, 'create', 'user', userId, username, `创建用户 ${displayNameValue}(${username})`);
       res.json({ success: true, message: '用户创建成功', userId });
     } catch (error) {
       console.error('Error creating user:', error);
@@ -486,6 +488,7 @@ db.getReady().then(() => {
       db.prepare('DELETE FROM user_projects WHERE user_id = ?').run(id);
       db.prepare('DELETE FROM users WHERE id = ?').run(id);
 
+      logAction(req, 'delete', 'user', id, user.username, `删除用户 ${user.username}`);
       res.json({ success: true, message: '用户删除成功' });
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -545,6 +548,8 @@ db.getReady().then(() => {
       );
 
       console.log('✅ 材料保存成功, ID:', materialId, '结果:', result);
+      const materialName = req.body.material_name || '';
+      logAction(req, 'create', 'material', materialId, materialName, `添加材料 ${materialName} (${safeProjectName})`);
       res.json({ success: true, id: materialId, message: '材料保存成功' });
     } catch (error) {
       console.error('❌ Error saving material:', error);
@@ -779,6 +784,7 @@ db.getReady().then(() => {
         `).run(id, req.user.id);
       }
 
+      logAction(req, 'delete', 'material', id, material.material_name, `删除材料 ${material.material_name}`);
       res.json({ success: true, message: '材料删除成功' });
     } catch (error) {
       console.error('Error deleting material:', error);
@@ -980,6 +986,7 @@ db.getReady().then(() => {
       db.prepare('INSERT INTO projects (id, user_id, name, description) VALUES (?, ?, ?, ?)')
         .run(projectId, req.user.id, name, description);
 
+      logAction(req, 'create', 'project', projectId, name, `创建项目 ${name}`);
       res.json({ success: true, id: projectId, message: '项目创建成功' });
     } catch (error) {
       console.error('Error creating project:', error);
@@ -1055,6 +1062,7 @@ db.getReady().then(() => {
       db.prepare('INSERT INTO projects (id, user_id, name, description) VALUES (?, ?, ?, ?)')
         .run(projectId, req.user.id, name, description);
 
+      logAction(req, 'create', 'project', projectId, name, `创建项目 ${name}`);
       res.json({ success: true, id: projectId, message: '项目创建成功' });
     } catch (error) {
       console.error('Error creating admin project:', error);
@@ -1083,6 +1091,7 @@ db.getReady().then(() => {
         db.prepare('UPDATE materials SET project_name = ? WHERE project_name = ?').run(name, oldName);
       }
 
+      logAction(req, 'update', 'project', id, name, `更新项目 ${name}`);
       res.json({ success: true, message: '项目更新成功' });
     } catch (error) {
       console.error('Error updating admin project:', error);
@@ -1114,6 +1123,7 @@ db.getReady().then(() => {
       db.prepare('DELETE FROM materials WHERE project_name = ?').run(project.name);
       db.prepare('DELETE FROM projects WHERE id = ?').run(id);
 
+      logAction(req, 'delete', 'project', id, project.name, `删除项目 ${project.name}`);
       res.json({ success: true, message: '项目删除成功' });
     } catch (error) {
       console.error('Error deleting admin project:', error);
@@ -1272,6 +1282,7 @@ db.getReady().then(() => {
       db.prepare('DELETE FROM materials WHERE id = ?').run(id);
 
       console.log('材料删除成功，ID:', id);
+      logAction(req, 'delete', 'material', id, material.material_name, `删除材料 ${material.material_name}`);
       res.json({ success: true, message: '材料删除成功' });
     } catch (error) {
       console.error('删除材料错误:', error.message);
