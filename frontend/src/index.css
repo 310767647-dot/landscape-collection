@@ -639,3 +639,162 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ========== 自适应布局：桌面端 (≥768px) ========== */
+@media (min-width: 768px) {
+  .mobile-container {
+    max-width: 100%;
+    padding-left: 220px;
+    padding-bottom: 0;
+  }
+
+  .app-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+
+  /* 桌面端顶部导航栏 */
+  .desktop-nav {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 200px;
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    padding: 20px 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+  }
+
+  .desktop-nav .nav-header {
+    padding: 0 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    margin-bottom: 12px;
+  }
+
+  .desktop-nav .nav-header h2 {
+    color: white;
+    font-size: 16px;
+    margin: 0;
+  }
+
+  .desktop-nav .nav-header p {
+    color: rgba(255,255,255,0.7);
+    font-size: 11px;
+    margin: 4px 0 0;
+  }
+
+  .desktop-nav .nav-user {
+    padding: 8px 16px;
+    color: rgba(255,255,255,0.9);
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 8px;
+  }
+
+  .desktop-nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    font-size: 14px;
+    transition: all 0.2s;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+
+  .desktop-nav a:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+  }
+
+  .desktop-nav a.active {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border-left-color: white;
+  }
+
+  .desktop-nav .nav-spacer {
+    flex: 1;
+  }
+
+  .desktop-nav .nav-logout {
+    color: rgba(255,200,200,0.8);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin-top: 8px;
+    padding-top: 12px;
+  }
+
+  /* 桌面端隐藏底部 Tab 栏 */
+  .tab-bar {
+    display: none !important;
+  }
+
+  /* 桌面端浮动按钮位置调整 */
+  .floating-button {
+    bottom: 30px;
+    right: 30px;
+  }
+
+  /* 页面内容宽屏调整 */
+  .page-content {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-bottom: 30px;
+  }
+
+  /* 统计卡片网格改为4列 */
+  .stats-cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* 材料信息改为2列 */
+  .material-info {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 筛选栏横向排列 */
+  .filter-bar {
+    flex-direction: row !important;
+    align-items: center !important;
+  }
+
+  .filter-bar > div {
+    margin-bottom: 0 !important;
+  }
+
+  /* 表单输入框更大 */
+  .form-input {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  /* 按钮更大 */
+  .action-button {
+    padding: 16px;
+  }
+
+  /* Toast 居中 */
+  .toast {
+    top: 30px;
+  }
+}
+
+/* ========== 超小屏 (≤375px) 优化 ========== */
+@media (max-width: 375px) {
+  .stats-cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .page-header h1 {
+    font-size: 17px;
+  }
+}

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import HomePage from './pages/HomePage'
 import AddMaterialPage from './pages/AddMaterialPage'
@@ -90,69 +90,126 @@ const AdminRoute = ({ children }) => {
 }
 
 function AppRoutes() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout, pendingCount } = useAuth()
+
+  const navItems = [
+    { path: '/', icon: '🏠', label: '首页' },
+    { path: '/add', icon: '➕', label: '录入材料' },
+    { path: '/list', icon: '📋', label: '材料列表' },
+    { path: '/export', icon: '📤', label: '导出数据' },
+  ]
+  if (user?.role === 'admin') {
+    navItems.push({ path: '/admin', icon: '🛠', label: '后台管理' })
+  }
+
+  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
+  const [desktop, setDesktop] = React.useState(isDesktop)
+
+  React.useEffect(() => {
+    const handleResize = () => setDesktop(window.innerWidth >= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const DesktopNav = () => (
+    <div className="desktop-nav">
+      <div className="nav-header">
+        <h2>🌿 数据采集</h2>
+        <p>市政景观材料管理</p>
+      </div>
+      <div className="nav-user">
+        👤 {user?.display_name || user?.username}
+      </div>
+      {navItems.map(item => (
+        <a
+          key={item.path}
+          className={location.pathname === item.path ? 'active' : ''}
+          onClick={() => navigate(item.path)}
+        >
+          <span>{item.icon}</span>
+          <span>{item.label}</span>
+          {item.path === '/list' && pendingCount > 0 && (
+            <span style={{ marginLeft: 'auto', background: '#ff4d4f', color: 'white', borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{pendingCount}</span>
+          )}
+        </a>
+      ))}
+      <div className="nav-spacer" />
+      <a onClick={() => navigate('/change-password')}>
+        <span>🔑</span><span>修改密码</span>
+      </a>
+      <a className="nav-logout" onClick={() => { logout(); navigate('/login') }}>
+        <span>🚪</span><span>退出登录</span>
+      </a>
+    </div>
+  )
   return (
-    <Routes>
-      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-      <Route path="/login-debug" element={<LoginDebugPage />} />
-      <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <HomePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/add"
-        element={
-          <ProtectedRoute>
-            <AddMaterialPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/list"
-        element={
-          <ProtectedRoute>
-            <MaterialListPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/detail/:id"
-        element={
-          <ProtectedRoute>
-            <MaterialDetailPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/export"
-        element={
-          <ProtectedRoute>
-            <ExportPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <AdminPage />
-          </AdminRoute>
-        }
-      />
-      <Route
-        path="/change-password"
-        element={
-          <ProtectedRoute>
-            <ChangePasswordPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {desktop && user && <DesktopNav />}
+      <Routes>
+        <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+        <Route path="/login-debug" element={<LoginDebugPage />} />
+        <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/add"
+          element={
+            <ProtectedRoute>
+              <AddMaterialPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/list"
+          element={
+            <ProtectedRoute>
+              <MaterialListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/detail/:id"
+          element={
+            <ProtectedRoute>
+              <MaterialDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/export"
+          element={
+            <ProtectedRoute>
+              <ExportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }
 
