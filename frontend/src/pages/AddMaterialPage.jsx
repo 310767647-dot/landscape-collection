@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPublicProjects, saveMaterial } from '../utils/api'
 import { saveMaterialLocal } from '../utils/db'
 
 export default function AddMaterialPage() {
   const navigate = useNavigate()
-  const recognitionRef = useRef(null)
 
   const [materials, setMaterials] = useState([{
     projectName: '',
@@ -20,8 +19,6 @@ export default function AddMaterialPage() {
   
   const [projects, setProjects] = useState([])
   const [loadingProjects, setLoadingProjects] = useState(true)
-  const [isRecording, setIsRecording] = useState(false)
-  const [recognitionStatus, setRecognitionStatus] = useState('')
   const [toast, setToast] = useState('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [savingIndex, setSavingIndex] = useState(-1)
@@ -47,101 +44,6 @@ export default function AddMaterialPage() {
     } finally {
       setLoadingProjects(false)
     }
-  }
-
-  const startRecording = () => {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      showToast('浏览器不支持语音识别')
-      return
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    recognitionRef.current = new SpeechRecognition()
-    recognitionRef.current.continuous = true
-    recognitionRef.current.interimResults = true
-    recognitionRef.current.lang = 'zh-CN'
-
-    setIsRecording(true)
-    setRecognitionStatus('正在听...')
-
-    let finalTranscript = ''
-
-    recognitionRef.current.onresult = (event) => {
-      let interimTranscript = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript
-        } else {
-          interimTranscript += transcript
-        }
-      }
-      setRecognitionStatus(finalTranscript + interimTranscript)
-    }
-
-    recognitionRef.current.onerror = (event) => {
-      if (event.error === 'not-allowed') {
-        showToast('请允许麦克风权限')
-      } else {
-        showToast('语音识别出错')
-      }
-      stopRecording()
-    }
-
-    recognitionRef.current.onend = () => {
-      if (isRecording) recognitionRef.current?.start()
-    }
-
-    recognitionRef.current.start()
-  }
-
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.abort()
-      recognitionRef.current = null
-    }
-    setIsRecording(false)
-    
-    if (recognitionStatus.trim()) {
-      parseVoiceInput(recognitionStatus)
-    }
-    setRecognitionStatus('')
-  }
-
-  const parseVoiceInput = (text) => {
-    showToast('正在解析语音...')
-    
-    const projectMatch = text.match(/项目[名名称]?[\s：:]([^，,。.、\n]+)/)
-    const materialMatch = text.match(/材料[名名称]?[\s：:]([^，,。.、\n]+)/)
-    const supplierMatch = text.match(/供应商[名名称]?[\s：:]([^，,。.、\n]+)/)
-    const specMatch = text.match(/规格[\s：:]([^，,。.、\n]+)/)
-    const quantityMatch = text.match(/数量[\s：:]([\d.]+)/)
-    const unitMatch = text.match(/单位[\s：:]([^，,。.、\n]+)/)
-
-    let newProjectName = materials[0]?.projectName || ''
-    if (projectMatch) {
-      const matchedProject = projects.find(p => 
-        p.name.includes(projectMatch[1].trim()) || 
-        projectMatch[1].trim().includes(p.name)
-      )
-      newProjectName = matchedProject ? matchedProject.name : materials[0]?.projectName || ''
-    }
-
-    setMaterials(prev => {
-      const newList = [...prev]
-      newList[0] = {
-        ...newList[0],
-        projectName: newProjectName,
-        materialName: materialMatch ? materialMatch[1].trim() : newList[0].materialName,
-        supplierName: supplierMatch ? supplierMatch[1].trim() : newList[0].supplierName,
-        specifications: specMatch ? specMatch[1].trim() : newList[0].specifications,
-        quantity: quantityMatch ? quantityMatch[1].trim() : newList[0].quantity,
-        unit: unitMatch ? unitMatch[1].trim() : newList[0].unit
-      }
-      return newList
-    })
-
-    showToast('语音解析完成')
   }
 
   const handleChange = (index, field, value) => {
@@ -248,7 +150,10 @@ export default function AddMaterialPage() {
 
   const checkNetwork = async () => {
     try {
-      const response = await fetch('/api/health', { timeout: 3000 })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      const response = await fetch('/api/health', { signal: controller.signal })
+      clearTimeout(timeoutId)
       return response.ok
     } catch {
       return false
@@ -360,50 +265,6 @@ export default function AddMaterialPage() {
         <div>
           <h1 style={{ margin: 0 }}>批量添加材料</h1>
           <p style={{ color: '#666', margin: 4, fontSize: 14 }}>支持同时添加多种材料</p>
-        </div>
-      </div>
-
-      <div style={{
-        padding: 16,
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        borderRadius: 12,
-        marginBottom: 16
-      }}>
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 12,
-            padding: 16,
-            background: 'white',
-            border: 'none',
-            borderRadius: 50,
-            fontSize: 16,
-            fontWeight: 'bold',
-            color: isRecording ? '#ff4d4f' : '#667eea',
-            cursor: 'pointer'
-          }}
-        >
-          {isRecording ? '🔊 停止录音' : '🎤 开始语音录入'}
-        </button>
-
-        {recognitionStatus && (
-          <div style={{
-            marginTop: 16,
-            background: 'rgba(255,255,255,0.95)',
-            borderRadius: 8,
-            padding: 12
-          }}>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>识别内容：</div>
-            <div style={{ fontSize: 14, color: '#333' }}>{recognitionStatus}</div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,0.8)', textAlign: 'center' }}>
-          💡 提示：说出"项目名称XXX，材料名称XXX，供应商XXX，规格XXX，数量XXX，单位XXX"
         </div>
       </div>
 

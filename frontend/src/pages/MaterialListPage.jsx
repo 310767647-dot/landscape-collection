@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getMaterials, deleteMaterial, getProjects, saveMaterial } from '../utils/api'
 import { getLocalMaterials, deleteLocalMaterial, getPendingMaterials, markMaterialSyncing, markMaterialSynced, markMaterialSyncFailed } from '../utils/db'
 import { base64ToFile } from '../utils/image'
+import AutocompleteInput from '../components/AutocompleteInput'
 
 function MaterialListPage() {
   const navigate = useNavigate()
@@ -10,8 +11,8 @@ function MaterialListPage() {
   const [localMaterials, setLocalMaterials] = useState([])
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState('')
-  const [projectSearch, setProjectSearch] = useState('')
-  const [showProjectDropdown, setShowProjectDropdown] = useState(false)
+  const [selectedMaterial, setSelectedMaterial] = useState('')
+  const [selectedSupplier, setSelectedSupplier] = useState('')
   const [showLocal, setShowLocal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [toast, setToast] = useState(null)
@@ -55,30 +56,23 @@ function MaterialListPage() {
 
   useEffect(() => {
     loadData()
-  }, [selectedProject])
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      const target = event.target
-      const dropdown = document.querySelector('.project-dropdown-container')
-      if (dropdown && !dropdown.contains(target)) {
-        setShowProjectDropdown(false)
-      }
-    }
-    
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
+  }, [selectedProject, selectedMaterial, selectedSupplier])
 
   const loadData = async () => {
     console.log('=== MaterialListPage loadData ===')
     console.log('selectedProject:', selectedProject)
+    console.log('selectedMaterial:', selectedMaterial)
+    console.log('selectedSupplier:', selectedSupplier)
     setIsLoading(true)
     try {
       const [serverData, localData, projectListResult] = await Promise.all([
-        selectedProject ? getMaterials({ project_name: selectedProject }) : getMaterials(),
+        (selectedProject || selectedMaterial || selectedSupplier)
+          ? getMaterials({ 
+              ...(selectedProject && { project_name: selectedProject }),
+              ...(selectedMaterial && { material_name: selectedMaterial }),
+              ...(selectedSupplier && { supplier_name: selectedSupplier })
+            })
+          : getMaterials(),
         getLocalMaterials(),
         getProjects().catch((err) => {
           console.error('getProjects error:', err)
@@ -252,99 +246,48 @@ function MaterialListPage() {
       </div>
 
       <div className="page-content">
-        <div className="filter-bar">
-          <div className="project-dropdown-container" style={{ position: 'relative', width: '100%', maxWidth: 300 }}>
-            <input
-              type="text"
-              className="form-input"
-              value={projectSearch || selectedProject || ''}
-              onChange={(e) => {
-                setProjectSearch(e.target.value)
-                setShowProjectDropdown(true)
-              }}
-              onClick={() => setShowProjectDropdown(true)}
-              placeholder="搜索项目名称..."
-              style={{ paddingRight: 40 }}
-            />
-            <span 
+        <div className="filter-bar" style={{ flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, width: '100%', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <AutocompleteInput
+                value={selectedProject}
+                onChange={setSelectedProject}
+                options={projects.map(p => p.name).filter(Boolean).sort()}
+                placeholder="输入或选择项目名称"
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <AutocompleteInput
+                value={selectedMaterial}
+                onChange={setSelectedMaterial}
+                options={[...new Set(materials.map(m => m.material_name).filter(Boolean))].sort()}
+                placeholder="输入或选择材料名称"
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <AutocompleteInput
+                value={selectedSupplier}
+                onChange={setSelectedSupplier}
+                options={[...new Set(materials.map(m => m.supplier_name).filter(Boolean))].sort()}
+                placeholder="输入或选择供应商"
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: '#999' }}>
+              {materials.length} 条记录
+            </span>
+            <button
+              className={`filter-chip ${showLocal ? 'active' : ''}`}
+              onClick={() => setShowLocal(!showLocal)}
               style={{ 
-                position: 'absolute', 
-                right: 12, 
-                top: '50%', 
-                transform: 'translateY(-50%)', 
-                pointerEvents: 'none',
-                color: '#999'
+                color: localMaterials.length > 0 ? '#fa8c16' : undefined,
+                marginLeft: 'auto'
               }}
             >
-              ▼
-            </span>
-            
-            {showProjectDropdown && (
-              <div 
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  background: 'white',
-                  border: '1px solid #e8e8e8',
-                  borderRadius: 8,
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-                  marginTop: 4,
-                  zIndex: 100,
-                  maxHeight: 200,
-                  overflowY: 'auto'
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div
-                  className={`filter-chip ${selectedProject === '' ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedProject('')
-                    setProjectSearch('')
-                    setShowProjectDropdown(false)
-                  }}
-                  style={{ margin: 4, borderRadius: 4 }}
-                >
-                  全部项目
-                </div>
-                {projects.filter(p => 
-                  !projectSearch || p.name.toLowerCase().includes(projectSearch.toLowerCase())
-                ).map(p => (
-                  <div
-                    key={p.id}
-                    className={`filter-chip ${selectedProject === p.name ? 'active' : ''}`}
-                    onClick={() => {
-                      setSelectedProject(p.name)
-                      setProjectSearch('')
-                      setShowProjectDropdown(false)
-                    }}
-                    style={{ margin: 4, borderRadius: 4 }}
-                  >
-                    {p.name}
-                  </div>
-                ))}
-                {projects.filter(p => 
-                  !projectSearch || p.name.toLowerCase().includes(projectSearch.toLowerCase())
-                ).length === 0 && projectSearch && (
-                  <div style={{ padding: 12, textAlign: 'center', color: '#999', fontSize: 13 }}>
-                    未找到项目 "{projectSearch}"
-                  </div>
-                )}
-              </div>
-            )}
+              本地 ({localMaterials.length})
+            </button>
           </div>
-          
-          <button
-            className={`filter-chip ${showLocal ? 'active' : ''}`}
-            onClick={() => setShowLocal(!showLocal)}
-            style={{ 
-              color: localMaterials.length > 0 ? '#fa8c16' : undefined,
-              marginLeft: 12
-            }}
-          >
-            本地 ({localMaterials.length})
-          </button>
         </div>
 
         {localMaterials.length > 0 && (

@@ -3,6 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const db = require('./database');
@@ -24,7 +25,7 @@ process.on('uncaughtException', (error) => {
 });
 
 const app = express();
-const PORT = 5006;
+const PORT = process.env.PORT || 5006;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -35,7 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'data', 'uploads')));
 
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(frontendDistPath)) {
@@ -44,7 +45,7 @@ if (fs.existsSync(frontendDistPath)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadsDir = path.join(__dirname, 'uploads');
+    const uploadsDir = path.join(__dirname, 'data', 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
@@ -63,6 +64,16 @@ function parsePermissions(permissions) {
     return JSON.parse(permissions || '{}');
   } catch {
     return {};
+  }
+}
+
+// 判断是否为首个创建的管理员（超级管理员不可被删除/降级）
+function isFirstAdmin(userId) {
+  try {
+    const firstAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1").get();
+    return firstAdmin && firstAdmin.id === userId;
+  } catch {
+    return false;
   }
 }
 
@@ -333,16 +344,18 @@ db.getReady().then(() => {
         return res.status(404).json({ error: '用户不存在' });
       }
       
-      // 特殊权限规则：
-      // 1. 只有 zyy6818487 可以修改最高权限者的信息
-      if (user.username === 'zyy6818487' && req.user.username !== 'zyy6818487') {
-        return res.status(403).json({ error: '您无权修改最高权限者的信息' });
+      // 保护超级管理员（首个创建的管理员）
+      if (isFirstAdmin(id) && req.user.id !== id) {
+        return res.status(403).json({ error: '不能修改超级管理员的信息' });
       }
-      
-      // 2. 只有 zyy6818487 可以将用户设置为管理员或从管理员降级
-      // 只有当角色确实发生变化时才需要检查权限
-      if (role !== undefined && role !== user.role && req.user.username !== 'zyy6818487') {
-        return res.status(403).json({ error: '您无权修改用户的管理员身份' });
+      if (isFirstAdmin(id) && role !== undefined && role !== user.role) {
+        return res.status(403).json({ error: '不能修改超级管理员角色' });
+      }
+
+      // 管理员可以修改任何用户的信息
+      // 不能将自己降级为非管理员（避免系统没有管理员）
+      if (role !== undefined && role !== user.role && req.user.id === id && role !== 'admin') {
+        return res.status(403).json({ error: '不能将自己降级为非管理员' });
       }
 
       let updateFields = [];
@@ -415,10 +428,7 @@ db.getReady().then(() => {
         return res.status(400).json({ error: '该手机号已被注册' });
       }
       
-      // 只有最高权限者可以创建管理员用户
-      if (role === 'admin' && req.user.username !== 'zyy6818487') {
-        return res.status(403).json({ error: '您无权创建管理员用户' });
-      }
+      // 管理员可以创建管理员用户
       
       const hashedPassword = await bcrypt.hash(password, 10);
       const userId = uuidv4();
@@ -444,15 +454,14 @@ db.getReady().then(() => {
         return res.status(404).json({ error: '用户不存在' });
       }
       
-      // 特殊权限规则：
-      // 1. zyy6818487 是最高权限者，不允许被删除
-      if (user.username === 'zyy6818487') {
-        return res.status(403).json({ error: '此用户是最高权限者，不允许删除' });
+      // 保护超级管理员（首个创建的管理员）
+      if (isFirstAdmin(id)) {
+        return res.status(403).json({ error: '不能删除超级管理员用户' });
       }
       
-      // 2. 只有 zyy6818487 可以删除管理员身份的用户
-      if (user.role === 'admin' && req.user.username !== 'zyy6818487') {
-        return res.status(403).json({ error: '您无权删除管理员身份的用户' });
+      // 管理员不能删除其他管理员（避免系统没有管理员）
+      if (user.role === 'admin' && req.user.id !== user.id) {
+        return res.status(403).json({ error: '不能删除其他管理员用户' });
       }
       
       db.prepare(`
@@ -532,10 +541,10 @@ db.getReady().then(() => {
 
   app.get('/api/materials', authenticateToken, (req, res) => {
     try {
-      const { project_name, page = 1, limit = 20 } = req.query;
+      const { project_name, material_name, supplier_name, page = 1, limit = 20 } = req.query;
       const offset = (page - 1) * limit;
 
-      let query = 'SELECT m.* FROM materials m';
+      let query = 'SELECT m.*, u.display_name as user_display_name, u.username as user_username FROM materials m LEFT JOIN users u ON m.user_id = u.id';
       let params = [];
       let hasWhere = false;
 
@@ -550,6 +559,21 @@ db.getReady().then(() => {
         query += hasWhere ? ' AND' : ' WHERE';
         query += ' m.project_name LIKE ?';
         params.push(`%${project_name}%`);
+        hasWhere = true;
+      }
+
+      if (material_name) {
+        query += hasWhere ? ' AND' : ' WHERE';
+        query += ' m.material_name LIKE ?';
+        params.push(`%${material_name}%`);
+        hasWhere = true;
+      }
+
+      if (supplier_name) {
+        query += hasWhere ? ' AND' : ' WHERE';
+        query += ' m.supplier_name LIKE ?';
+        params.push(`%${supplier_name}%`);
+        hasWhere = true;
       }
 
       query += ' ORDER BY m.created_at DESC LIMIT ? OFFSET ?';
@@ -557,14 +581,31 @@ db.getReady().then(() => {
 
       const materials = db.prepare(query).all(...params);
 
-      const countQuery = req.user.role === 'admin' 
-        ? ('SELECT COUNT(*) as count FROM materials' + (project_name ? ' WHERE project_name LIKE ?' : ''))
-        : ('SELECT COUNT(*) as count FROM materials m INNER JOIN user_projects up ON m.project_name = (SELECT p.name FROM projects p WHERE p.id = up.project_id) WHERE up.user_id = ?' + (project_name ? ' AND m.project_name LIKE ?' : ''));
-      
-      const countParams = req.user.role === 'admin'
-        ? (project_name ? [`%${project_name}%`] : [])
-        : (project_name ? [req.user.id, `%${project_name}%`] : [req.user.id]);
-      
+      // 构建计数查询（复用相同的 WHERE 条件）
+      let countConditions = [];
+      let countParams = [];
+
+      if (req.user.role !== 'admin') {
+        countConditions.push('up.user_id = ?');
+        countParams.push(req.user.id);
+      }
+      if (project_name) {
+        countConditions.push('m.project_name LIKE ?');
+        countParams.push(`%${project_name}%`);
+      }
+      if (material_name) {
+        countConditions.push('m.material_name LIKE ?');
+        countParams.push(`%${material_name}%`);
+      }
+      if (supplier_name) {
+        countConditions.push('m.supplier_name LIKE ?');
+        countParams.push(`%${supplier_name}%`);
+      }
+
+      const countQuery = req.user.role === 'admin'
+        ? ('SELECT COUNT(*) as count FROM materials m' + (countConditions.length > 0 ? ' WHERE ' + countConditions.join(' AND ') : ''))
+        : ('SELECT COUNT(*) as count FROM materials m INNER JOIN user_projects up ON m.project_name = (SELECT p.name FROM projects p WHERE p.id = up.project_id)' + (countConditions.length > 0 ? ' WHERE ' + countConditions.join(' AND ') : ''));
+
       const total = db.prepare(countQuery).get(...countParams)?.count || 0;
 
       res.json({
@@ -797,82 +838,32 @@ db.getReady().then(() => {
     }
   });
 
-  // 统计接口（首页需要）
+  // 统计接口
   app.get('/api/stats', authenticateToken, (req, res) => {
     try {
-      const projectCount = db.prepare('SELECT COUNT(*) as count FROM projects').get()?.count || 0;
-      
-      let materialCountQuery = 'SELECT COUNT(*) as count FROM materials';
-      let todayCountQuery = 'SELECT COUNT(*) as count FROM materials WHERE DATE(created_at) = DATE("now")';
-      
-      if (req.user.role !== 'admin') {
-        materialCountQuery = 'SELECT COUNT(*) as count FROM materials m INNER JOIN user_projects up ON m.project_name = (SELECT p.name FROM projects p WHERE p.id = up.project_id) WHERE up.user_id = ?';
-        todayCountQuery = 'SELECT COUNT(*) as count FROM materials m INNER JOIN user_projects up ON m.project_name = (SELECT p.name FROM projects p WHERE p.id = up.project_id) WHERE up.user_id = ? AND DATE(m.created_at) = DATE("now")';
-      }
+      const userStats = db.prepare(`
+        SELECT 
+          COUNT(*) as total_materials,
+          COUNT(DISTINCT project_name) as total_projects
+        FROM materials WHERE user_id = ?
+      `).get(req.user.id);
 
-      const materialCount = req.user.role === 'admin' 
-        ? db.prepare(materialCountQuery).get()?.count || 0
-        : db.prepare(materialCountQuery).get(req.user.id)?.count || 0;
-      
-      const todayCount = req.user.role === 'admin'
-        ? db.prepare(todayCountQuery).get()?.count || 0
-        : db.prepare(todayCountQuery).get(req.user.id)?.count || 0;
+      const recentMaterials = db.prepare(`
+        SELECT id, project_name, material_name, supplier_name, specifications, quantity, unit, arrival_time, created_at
+        FROM materials 
+        WHERE user_id = ? 
+        ORDER BY created_at DESC 
+        LIMIT 5
+      `).all(req.user.id);
 
       res.json({
-        success: true,
-        data: {
-          projectCount,
-          materialCount,
-          todayCount
-        }
+        totalMaterials: (userStats?.total_materials || 0),
+        totalProjects: (userStats?.total_projects || 0),
+        recentMaterials: recentMaterials || []
       });
     } catch (error) {
-      console.error('获取统计信息错误:', error);
-      res.status(500).json({ error: '获取统计信息失败' });
-    }
-  });
-
-  // 语音识别接口（需要第三方服务）
-  app.post('/api/voice-recognize', authenticateToken, upload.single('voice'), async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: '没有上传语音文件' });
-      }
-
-      const voicePath = req.file.path;
-      
-      // 模拟语音识别结果（实际项目中需要调用真实的语音识别API）
-      const recognizedText = '项目名称测试项目，材料名称钢筋，供应商XX建材，规格HRB400，数量50，单位吨';
-      
-      res.json({
-        success: true,
-        text: recognizedText,
-        message: '语音识别成功'
-      });
-
-    } catch (error) {
-      console.error('语音识别错误:', error);
-      res.status(500).json({ error: '语音识别失败' });
-    }
-  });
-
-  // 图片上传接口（小程序专用）
-  app.post('/api/upload-photo', authenticateToken, upload.single('photo'), (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: '没有上传图片' });
-      }
-
-      const photoUrl = `/uploads/${req.file.filename}`;
-      
-      res.json({
-        success: true,
-        url: photoUrl,
-        filename: req.file.filename
-      });
-    } catch (error) {
-      console.error('图片上传错误:', error);
-      res.status(500).json({ error: '图片上传失败' });
+      console.error('Error fetching stats:', error);
+      res.status(500).json({ error: '获取统计数据失败' });
     }
   });
 
@@ -1274,33 +1265,6 @@ db.getReady().then(() => {
     }
   });
 
-  app.get('/api/stats', authenticateToken, (req, res) => {
-    try {
-      const userStats = db.prepare(`
-        SELECT 
-          COUNT(*) as total_materials,
-          COUNT(DISTINCT project_name) as total_projects
-        FROM materials WHERE user_id = ?
-      `).get(req.user.id);
-
-      const recentMaterials = db.prepare(`
-        SELECT project_name, material_name, created_at 
-        FROM materials 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 5
-      `).all(req.user.id);
-
-      res.json({
-        ...userStats,
-        recent_materials: recentMaterials
-      });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-      res.status(500).json({ error: '获取统计数据失败' });
-    }
-  });
-
   app.get('/api/export/materials', authenticateToken, (req, res) => {
     try {
       const { project_name } = req.query;
@@ -1515,9 +1479,22 @@ db.getReady().then(() => {
     }
   });
 
+  const os = require('os');
+  const networkInterfaces = os.networkInterfaces();
+  let networkAddress = 'localhost';
+  for (const name of Object.keys(networkInterfaces)) {
+    for (const iface of networkInterfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        networkAddress = iface.address;
+        break;
+      }
+    }
+    if (networkAddress !== 'localhost') break;
+  }
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://localhost:${PORT}`);
-    console.log(`Network access: http://192.168.2.16:${PORT}`);
+    console.log(`Network access: http://${networkAddress}:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
 }).catch(error => {

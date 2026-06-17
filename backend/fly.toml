@@ -1,0 +1,25 @@
+# Fly.io 部署配置
+# 使用方式：在项目根目录运行 fly launch --config backend/fly.toml
+
+app = "landscape-collection"
+primary_region = "hkg"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[http_service]
+  internal_port = 5006
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[mounts]
+  source = "data"
+  destination = "/app/backend/data"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

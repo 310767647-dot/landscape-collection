@@ -31,7 +31,9 @@ function LoginPage() {
     setError('')
 
     try {
-      const response = await axios.post('/api/login', formData)
+      const response = await axios.post('/api/login', formData, {
+        timeout: 15000
+      })
 
       if (response.data.success) {
         const { user, token } = response.data

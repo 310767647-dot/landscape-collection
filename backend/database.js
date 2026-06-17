@@ -2,7 +2,7 @@ const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = path.join(__dirname, 'landscape_collection.db');
+const dbPath = path.join(__dirname, 'data', 'landscape_collection.db');
 
 let db = null;
 let dbBuffer = null;

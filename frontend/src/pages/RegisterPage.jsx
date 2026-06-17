@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
+import { useAuth } from '../context/AuthContext'
 
 function RegisterPage() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [formData, setFormData] = useState({
     username: '',
     real_name: '',
@@ -72,16 +74,14 @@ function RegisterPage() {
         real_name: formData.real_name.trim(),
         phone: formData.phone.trim(),
         password: formData.password
+      }, {
+        timeout: 15000
       })
 
       if (response.data.success) {
         const { user, token } = response.data
-
-        localStorage.setItem('auth_token', token)
-        localStorage.setItem('auth_user', JSON.stringify(user))
-
+        await login(user, token)
         navigate('/')
-        window.location.reload()
       }
     } catch (err) {
       console.error('Register error:', err)

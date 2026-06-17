@@ -5,7 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build": "cd ../frontend && npm install && npm run build",
+    "seed": "node seed.js",
+    "reset-admin": "node reset-admin.js",
+    "set-admin": "node set-admin.js"
   },
   "dependencies": {
     "express": "^4.18.2",

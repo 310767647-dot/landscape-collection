@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getAdminUsers, updateAdminUser, getAdminMaterials, updateAdminMaterial, getPublicProjects, createAdminProject, updateAdminProject, deleteAdminProject } from '../utils/api'
 import api from '../utils/api'
 import { useAuth } from '../context/AuthContext'
+import AutocompleteInput from '../components/AutocompleteInput'
 
 function AdminPage() {
   const navigate = useNavigate()
@@ -660,22 +661,20 @@ function AdminPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div className="form-row" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>项目名称</label>
-                  <input
-                    type="text"
-                    className="form-input"
+                  <AutocompleteInput
                     value={materialFilters.project_name}
-                    onChange={(e) => handleMaterialFilterChange('project_name', e.target.value)}
-                    placeholder="输入项目名称"
+                    onChange={(val) => handleMaterialFilterChange('project_name', val)}
+                    options={[...new Set(materials.map(m => m.project_name).filter(Boolean))].sort()}
+                    placeholder="输入或选择项目名称"
                   />
                 </div>
                 <div className="form-row" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>材料名称</label>
-                  <input
-                    type="text"
-                    className="form-input"
+                  <AutocompleteInput
                     value={materialFilters.material_name}
-                    onChange={(e) => handleMaterialFilterChange('material_name', e.target.value)}
-                    placeholder="输入材料名称"
+                    onChange={(val) => handleMaterialFilterChange('material_name', val)}
+                    options={[...new Set(materials.map(m => m.material_name).filter(Boolean))].sort()}
+                    placeholder="输入或选择材料名称"
                   />
                 </div>
               </div>
@@ -683,22 +682,20 @@ function AdminPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div className="form-row" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>供应商</label>
-                  <input
-                    type="text"
-                    className="form-input"
+                  <AutocompleteInput
                     value={materialFilters.supplier_name}
-                    onChange={(e) => handleMaterialFilterChange('supplier_name', e.target.value)}
-                    placeholder="输入供应商名称"
+                    onChange={(val) => handleMaterialFilterChange('supplier_name', val)}
+                    options={[...new Set(materials.map(m => m.supplier_name).filter(Boolean))].sort()}
+                    placeholder="输入或选择供应商名称"
                   />
                 </div>
                 <div className="form-row" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 12 }}>录入人</label>
-                  <input
-                    type="text"
-                    className="form-input"
+                  <AutocompleteInput
                     value={materialFilters.user_name}
-                    onChange={(e) => handleMaterialFilterChange('user_name', e.target.value)}
-                    placeholder="输入真实姓名或用户名"
+                    onChange={(val) => handleMaterialFilterChange('user_name', val)}
+                    options={[...new Set(materials.map(m => m.user_display_name || m.user_name || '').filter(Boolean))].sort()}
+                    placeholder="输入或选择录入人"
                   />
                 </div>
               </div>
@@ -1272,6 +1269,24 @@ function AdminPage() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.8)',
+          color: 'white',
+          padding: '12px 24px',
+          borderRadius: 8,
+          fontSize: 14,
+          zIndex: 10000,
+          animation: 'fadeIn 0.3s'
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

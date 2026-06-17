@@ -98,7 +98,8 @@ function MaterialDetailPage() {
       if (material.photo_path.startsWith('data:') || material.photo_path.startsWith('blob:')) {
         return material.photo_path
       }
-      return `http://localhost:3001${material.photo_path}`
+      // 使用相对路径（通过 Vite 代理或后端静态文件服务）
+      return material.photo_path
     }
     return null
   }

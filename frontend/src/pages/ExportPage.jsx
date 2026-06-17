@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { getMaterials, getProjects, exportMaterials } from '../utils/api'
 import { getLocalMaterials } from '../utils/db'
 import { exportToExcel, exportToCSV, downloadFile, shareViaWebShare } from '../utils/export'
+import { performSync } from '../utils/sync'
+import AutocompleteInput from '../components/AutocompleteInput'
 
 function ExportPage() {
   const navigate = useNavigate()
   const [materials, setMaterials] = useState([])
   const [localMaterials, setLocalMaterials] = useState([])
   const [projects, setProjects] = useState([])
+  const [serverTotal, setServerTotal] = useState(0)
   const [selectedProject, setSelectedProject] = useState('')
   const [selectedMaterial, setSelectedMaterial] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState('')
@@ -34,6 +37,12 @@ function ExportPage() {
 
       const serverMaterials = materialsData?.materials || (Array.isArray(materialsData) ? materialsData : [])
       setMaterials(serverMaterials)
+      setServerTotal(materialsData?.pagination?.total || serverMaterials.length)
+      // 只保留未同步的本地记录（已同步的已在云端，避免重复）
+      const pendingLocal = Array.isArray(localData) ? localData.filter(m => 
+        m.syncStatus === 'pending' || m.syncStatus === 'syncing' || m.syncStatus === 'failed'
+      ) : []
+      setLocalMaterials(pendingLocal)
       setProjects(Array.isArray(projectsData) ? projectsData : [])
       setLocalMaterials(Array.isArray(localData) ? localData : [])
     } catch (error) {
@@ -83,20 +92,25 @@ function ExportPage() {
     let filtered = materials ? [...materials] : []
 
     if (selectedProject) {
-      filtered = filtered.filter(m => m.project_name === selectedProject)
+      const q = selectedProject.toLowerCase()
+      filtered = filtered.filter(m => m.project_name && m.project_name.toLowerCase().includes(q))
     }
 
     if (selectedMaterial) {
-      filtered = filtered.filter(m => m.material_name === selectedMaterial)
+      const q = selectedMaterial.toLowerCase()
+      filtered = filtered.filter(m => m.material_name && m.material_name.toLowerCase().includes(q))
     }
 
     if (selectedSupplier) {
-      filtered = filtered.filter(m => m.supplier_name === selectedSupplier)
+      const q = selectedSupplier.toLowerCase()
+      filtered = filtered.filter(m => m.supplier_name && m.supplier_name.toLowerCase().includes(q))
     }
 
     if (selectedUser) {
+      const q = selectedUser.toLowerCase()
       filtered = filtered.filter(m => 
-        m.user_display_name === selectedUser || m.user_username === selectedUser
+        (m.user_display_name && m.user_display_name.toLowerCase().includes(q)) ||
+        (m.user_username && m.user_username.toLowerCase().includes(q))
       )
     }
 
@@ -109,7 +123,16 @@ function ExportPage() {
     }
 
     if (includeLocal && localMaterials) {
-      filtered = [...filtered, ...localMaterials]
+      // 只取未同步的本地记录（避免与已同步的云端记录重复）
+      const pendingLocal = localMaterials.filter(m => 
+        m.syncStatus === 'pending' || m.syncStatus === 'syncing' || m.syncStatus === 'failed'
+      )
+      // 对已匹配的云端记录按名称去重（防止意外重复）
+      const serverKeys = new Set(filtered.map(m => `${m.material_name}|${m.project_name}|${m.supplier_name}`))
+      const uniqueLocal = pendingLocal.filter(m => 
+        !serverKeys.has(`${m.material_name}|${m.project_name}|${m.supplier_name}`)
+      )
+      filtered = [...filtered, ...uniqueLocal]
     }
 
     return filtered
@@ -166,33 +189,13 @@ function ExportPage() {
   const handleSyncAndExport = async () => {
     setExporting(true)
     try {
-      const { getPendingMaterials, markMaterialSynced } = await import('../utils/db')
-      const pending = await getPendingMaterials()
-
-      for (const material of pending) {
-        try {
-          const { saveMaterial } = await import('../utils/api')
-          const result = await saveMaterial({
-            project_name: material.project_name,
-            material_name: material.material_name,
-            supplier_name: material.supplier_name,
-            specifications: material.specifications,
-            quantity: material.quantity,
-            unit: material.unit,
-            arrival_time: material.arrival_time,
-            ocr_text: material.ocr_text
-          })
-
-          if (result.success) {
-            await markMaterialSynced(material.id, result.id)
-          }
-        } catch (error) {
-          console.error('Sync error:', error)
-        }
+      const result = await performSync({ force: true })
+      if (result.success) {
+        await loadData()
+        showToast(result.message || '数据同步完成')
+      } else {
+        showToast(result.message || '同步失败')
       }
-
-      await loadData()
-      showToast('数据同步完成')
     } catch (error) {
       console.error('Sync error:', error)
       showToast('同步失败')
@@ -202,7 +205,7 @@ function ExportPage() {
   }
 
   const filteredCount = isLoading ? 0 : getFilteredMaterials().length
-  const totalCount = isLoading ? 0 : (materials?.length || 0) + (localMaterials?.length || 0)
+  const totalCount = isLoading ? 0 : (serverTotal || 0) + (localMaterials?.length || 0)
 
   return (
     <div>
@@ -226,7 +229,7 @@ function ExportPage() {
               <div className="stat-label">待导出</div>
             </div>
             <div className="stat-card">
-              <div className="stat-value">{materials.length}</div>
+              <div className="stat-value">{serverTotal || materials.length}</div>
               <div className="stat-label">云端记录</div>
             </div>
             <div className="stat-card">
@@ -258,58 +261,42 @@ function ExportPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-row">
               <label className="form-label">按项目筛选</label>
-              <select
-                className="form-input"
+              <AutocompleteInput
                 value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
-              >
-                <option value="">全部项目</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+                onChange={setSelectedProject}
+                options={projects.map(p => p.name)}
+                placeholder="输入或选择项目名称"
+              />
             </div>
             <div className="form-row">
               <label className="form-label">按材料筛选</label>
-              <select
-                className="form-input"
+              <AutocompleteInput
                 value={selectedMaterial}
-                onChange={(e) => setSelectedMaterial(e.target.value)}
-              >
-                <option value="">全部材料</option>
-                {getUniqueMaterialNames().map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+                onChange={setSelectedMaterial}
+                options={getUniqueMaterialNames()}
+                placeholder="输入或选择材料名称"
+              />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="form-row">
               <label className="form-label">按供应商筛选</label>
-              <select
-                className="form-input"
+              <AutocompleteInput
                 value={selectedSupplier}
-                onChange={(e) => setSelectedSupplier(e.target.value)}
-              >
-                <option value="">全部供应商</option>
-                {getUniqueSupplierNames().map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+                onChange={setSelectedSupplier}
+                options={getUniqueSupplierNames()}
+                placeholder="输入或选择供应商名称"
+              />
             </div>
             <div className="form-row">
               <label className="form-label">按录入用户筛选</label>
-              <select
-                className="form-input"
+              <AutocompleteInput
                 value={selectedUser}
-                onChange={(e) => setSelectedUser(e.target.value)}
-              >
-                <option value="">全部用户</option>
-                {getUniqueUsers().map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+                onChange={setSelectedUser}
+                options={getUniqueUsers()}
+                placeholder="输入或选择用户名称"
+              />
             </div>
           </div>
 

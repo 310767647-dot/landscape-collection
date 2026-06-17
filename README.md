@@ -48,7 +48,7 @@ cd backend
 npm start
 ```
 
-后端服务将在 http://localhost:3001 运行
+后端服务将在 http://localhost:5006 运行
 
 ### 3. 启动前端应用
 
@@ -57,7 +57,7 @@ cd frontend
 npm run dev
 ```
 
-前端应用将在 http://localhost:3000 运行
+前端应用将在 http://localhost:4005 运行
 
 ### 4. 访问应用
 

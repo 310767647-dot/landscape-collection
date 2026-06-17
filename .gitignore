@@ -11,11 +11,15 @@ dist/
 *.log
 server.log
 
-# Database
+# Database & uploaded files (runtime data)
 *.db
+backend/data/
 
-# Uploads (user-generated content)
+# Old uploads path
 backend/uploads/
+
+# Tool metadata
+.reasonix/
 
 # Environment files
 .env

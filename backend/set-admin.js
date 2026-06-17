@@ -1,23 +1,34 @@
+/**
+ * 将指定用户设置为管理员
+ * 用法: node set-admin.js <用户名>
+ * 示例: node set-admin.js admin
+ */
+
 const db = require('./database');
+const username = process.argv[2];
+
+if (!username) {
+  console.log('用法: node set-admin.js <用户名>');
+  console.log('示例: node set-admin.js admin');
+  process.exit(1);
+}
 
 db.getReady().then(() => {
-  const username = 'zyy6818487';
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-
-  console.log('=== 当前用户信息 ===');
-  console.log(JSON.stringify(user, null, 2));
-  console.log('');
 
   if (user) {
     if (user.role === 'admin') {
-      console.log('✓ 用户 ' + username + ' 已经是管理员');
+      console.log(`✓ 用户 "${username}" 已经是管理员`);
     } else {
       db.prepare('UPDATE users SET role = ? WHERE username = ?').run('admin', username);
-      const updatedUser = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-      console.log('✓ 用户 ' + username + ' 已设置为管理员');
-      console.log('更新后的角色:', updatedUser.role);
+      console.log(`✓ 用户 "${username}" 已设置为管理员`);
     }
+    console.log(`  显示名: ${user.display_name || '未设置'}`);
+    console.log(`  手机号: ${user.phone || '未设置'}`);
   } else {
-    console.log('✗ 用户 ' + username + ' 不存在');
+    console.log(`✗ 用户 "${username}" 不存在`);
+    console.log('可用的用户列表:');
+    const users = db.prepare('SELECT username, role FROM users').all();
+    users.forEach(u => console.log(`  ${u.username} (${u.role})`));
   }
 });
