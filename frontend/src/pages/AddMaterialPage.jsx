@@ -18,6 +18,7 @@ export default function AddMaterialPage() {
   }])
   
   const [projects, setProjects] = useState([])
+  const [fieldOptions, setFieldOptions] = useState({ materialNames: [], supplierNames: [], specOptions: [] })
   const [loadingProjects, setLoadingProjects] = useState(true)
   const [toast, setToast] = useState('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -31,7 +32,17 @@ export default function AddMaterialPage() {
 
   useEffect(() => {
     loadProjects()
+    loadFieldOptions()
   }, [])
+
+  const loadFieldOptions = async () => {
+    try {
+      const resp = await api.get('/field-options')
+      if (resp.data) setFieldOptions(resp.data)
+    } catch (e) {
+      // 静默失败
+    }
+  }
 
   const loadProjects = async () => {
     setLoadingProjects(true)
@@ -365,37 +376,23 @@ export default function AddMaterialPage() {
 
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', marginBottom: 6, fontWeight: 'bold', fontSize: 13 }}>📦 材料名称 *</label>
-              <input
-                type="text"
+              <AutocompleteInput
                 value={material.materialName}
-                onChange={(e) => handleChange(index, 'materialName', e.target.value)}
-                placeholder="请输入材料名称"
-                style={{
-                  width: '100%',
-                  padding: 10,
-                  borderRadius: 6,
-                  border: '1px solid #ddd',
-                  boxSizing: 'border-box',
-                  fontSize: 13
-                }}
+                onChange={(val) => handleChange(index, 'materialName', val)}
+                options={fieldOptions.materialNames || []}
+                placeholder="输入或选择材料名称"
+                style={{ width: '100%' }}
               />
             </div>
 
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', marginBottom: 6, fontWeight: 'bold', fontSize: 13 }}>🏢 供应商名称</label>
-              <input
-                type="text"
+              <AutocompleteInput
                 value={material.supplierName}
-                onChange={(e) => handleChange(index, 'supplierName', e.target.value)}
-                placeholder="请输入供应商名称"
-                style={{
-                  width: '100%',
-                  padding: 10,
-                  borderRadius: 6,
-                  border: '1px solid #ddd',
-                  boxSizing: 'border-box',
-                  fontSize: 13
-                }}
+                onChange={(val) => handleChange(index, 'supplierName', val)}
+                options={fieldOptions.supplierNames || []}
+                placeholder="输入或选择供应商名称"
+                style={{ width: '100%' }}
               />
             </div>
 

@@ -521,6 +521,18 @@ db.getReady().then(() => {
         return res.status(400).json({ error: '材料名称不能为空' });
       }
 
+      // 非管理员用户只能操作被匹配的项目
+      if (req.user.role !== 'admin' && project_name) {
+        const assigned = db.prepare(`
+          SELECT 1 FROM user_projects up 
+          INNER JOIN projects p ON p.id = up.project_id 
+          WHERE up.user_id = ? AND p.name = ?
+        `).get(req.user.id, project_name);
+        if (!assigned) {
+          return res.status(403).json({ error: '您无权操作该项目' });
+        }
+      }
+
       const materialId = uuidv4();
       
       const safeProjectName = project_name || '';
@@ -962,16 +974,20 @@ db.getReady().then(() => {
     }
   });
 
-  // 公开项目列表（小程序首页需要）
+  // 项目列表
   app.get('/api/projects', authenticateToken, (req, res) => {
     try {
       let projects;
       if (req.user.role === 'admin') {
-        // 管理员可以看到所有项目
         projects = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all();
       } else {
-        // 普通用户可以看到所有项目（用于选择）
-        projects = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all();
+        // 普通用户只能看到被匹配的项目
+        projects = db.prepare(`
+          SELECT p.* FROM projects p 
+          INNER JOIN user_projects up ON p.id = up.project_id 
+          WHERE up.user_id = ?
+          ORDER BY p.created_at DESC
+        `).all(req.user.id);
       }
       res.json({
         success: true,
@@ -1006,7 +1022,17 @@ db.getReady().then(() => {
 
   app.get('/api/public/projects', authenticateToken, (req, res) => {
     try {
-      const projects = db.prepare('SELECT id, name, description FROM projects ORDER BY created_at DESC').all();
+      let projects;
+      if (req.user.role === 'admin') {
+        projects = db.prepare('SELECT id, name, description FROM projects ORDER BY created_at DESC').all();
+      } else {
+        projects = db.prepare(`
+          SELECT p.id, p.name, p.description FROM projects p 
+          INNER JOIN user_projects up ON p.id = up.project_id 
+          WHERE up.user_id = ?
+          ORDER BY p.created_at DESC
+        `).all(req.user.id);
+      }
       res.json(projects);
     } catch (error) {
       console.error('Error fetching public projects:', error);
@@ -1352,6 +1378,35 @@ db.getReady().then(() => {
     } catch (error) {
       console.error('Error fetching deleted users:', error);
       res.status(500).json({ error: '获取删除用户记录失败' });
+    }
+  });
+
+  // ========== 自动补全接口（材料字段候选值）==========
+
+  app.get('/api/field-options', authenticateToken, (req, res) => {
+    try {
+      const materialNames = db.prepare(`
+        SELECT DISTINCT material_name FROM materials 
+        ${req.user.role !== 'admin' ? 'WHERE user_id = ?' : ''} 
+        ORDER BY material_name
+      `).all(req.user.role !== 'admin' ? [req.user.id] : []).map(r => r.material_name).filter(Boolean);
+
+      const supplierNames = db.prepare(`
+        SELECT DISTINCT supplier_name FROM materials 
+        ${req.user.role !== 'admin' ? 'WHERE user_id = ?' : ''} 
+        ORDER BY supplier_name
+      `).all(req.user.role !== 'admin' ? [req.user.id] : []).map(r => r.supplier_name).filter(Boolean);
+
+      const specOptions = db.prepare(`
+        SELECT DISTINCT specifications FROM materials 
+        ${req.user.role !== 'admin' ? 'WHERE user_id = ?' : ''} 
+        ORDER BY specifications
+      `).all(req.user.role !== 'admin' ? [req.user.id] : []).map(r => r.specifications).filter(Boolean);
+
+      res.json({ materialNames, supplierNames, specOptions });
+    } catch (error) {
+      console.error('获取字段选项错误:', error);
+      res.json({ materialNames: [], supplierNames: [], specOptions: [] });
     }
   });
 
