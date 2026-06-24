@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPublicProjects, saveMaterial } from '../utils/api'
+import api from '../utils/api'
 import { saveMaterialLocal } from '../utils/db'
+import AutocompleteInput from '../components/AutocompleteInput'
 
 export default function AddMaterialPage() {
   const navigate = useNavigate()
